@@ -46,7 +46,10 @@ public class Drone implements Unit {
 				hq = rc.senseHQLocation();
 				enemyHQ = rc.senseEnemyHQLocation();
 				random = new Random(rc.getID());
-				state = new Patrolling();
+				int round = Clock.getRoundNum();
+				if (round < 500 && rc.readBroadcast(CHANNELS.NUMBER_DRONE.getValue()) < 2) {
+					state = new Scouting();
+				}else state = new Patrolling();
 			}
 		} catch (GameActionException e) {
 			// TODO Auto-generated catch block
@@ -58,9 +61,6 @@ public class Drone implements Unit {
 	private Unit makeSubunit(RobotController rc) throws GameActionException {
 		int round = Clock.getRoundNum();
 		int lastRound = round - 1;
-		if (round < 500 && rc.readBroadcast(CHANNELS.NUMBER_DRONE.getValue()) < 2) {
-			return new ScoutDrone();
-		}
 		int supplierAlive = rc.readBroadcast(CHANNELS.SUPPLY_DRONE1.getValue());
 		if (supplierAlive != round && supplierAlive != lastRound) {
 			return new SupplyDrone(1); 
@@ -84,7 +84,7 @@ public class Drone implements Unit {
         	 try {
              enemies = rc.senseNearbyRobots(rc.getType().sensorRadiusSquared, opponent);
              allies = rc.senseNearbyRobots(rc.getType().sensorRadiusSquared, team);
-             state = state.run(rc, this);
+             state = state.run(this);
 
              rc.yield();
         	 } catch (GameActionException e) {
@@ -96,14 +96,14 @@ public class Drone implements Unit {
 	
 	interface State {
 
-	    State run(RobotController rc, Drone d) throws GameActionException;
+	    State run(Drone d) throws GameActionException;
 	}
 
 	class Patrolling implements State {
 
 	    MapLocation nextTower = null;
 
-	    public State run(RobotController rc, Drone d) throws GameActionException {
+	    public State run(Drone d) throws GameActionException {
 	        if (nextTower != null) {
 	            rc.setIndicatorString(0, "Patrolling to " + nextTower.toString());
 	        }
@@ -170,14 +170,14 @@ public class Drone implements Unit {
 
 	class Responding implements State {
 
-	    public State run(RobotController rc, Drone d) throws GameActionException {
+	    public State run(Drone d) throws GameActionException {
 	        return this;
 	    }
 	}
 
 	class Chasing implements State {
 
-	    public State run(RobotController rc, Drone d) throws GameActionException {
+	    public State run(Drone d) throws GameActionException {
 	        rc.setIndicatorString(0, "Chasing");
 	        if (d.enemies.length == 0) {
 	            Patrolling state = new Patrolling();
@@ -216,6 +216,139 @@ public class Drone implements Unit {
 	        }
 	        return this;
 	    }
+	}
+	
+	class Scouting implements State {
+	    boolean map[][] = new boolean[1000][1000]; // HQ in the center
+	    boolean explored[][] = new boolean[1000][1000]; // HQ in the center
+	    short toBrodcast[];
+	    int senseRange = 24;
+	    int chan = 500;
+	    int index = 0;
+	    MapLocation myLoc;
+
+	    //order of exploring
+	    boolean south = false;
+	    boolean northEast = false;
+	    boolean north = false;
+	    boolean east = false;
+	    boolean west = false;
+	    int count = 10;
+	    int count2 = 10;
+
+	    RobotInfo[] nearRobots;
+	    RobotInfo[] enemies;
+		
+	    /**
+	     * Gather scouting information
+	     */
+	    public void perception(Drone d) {
+	        myLoc = rc.getLocation();
+
+	        /* sense everything within range */
+	        nearRobots = rc.senseNearbyRobots(senseRange);
+	        enemies = rc.senseNearbyRobots(d.range, d.team.opponent());
+	    }
+
+	    /**
+	     * Test terrain and look at robot info
+	     */
+	    public void calculation(Drone d) {
+	        try {
+	            MapLocation loc = rc.getLocation();
+	            /* adjust loc to be upper left extreem of sense range */
+	            loc = new MapLocation(loc.x - (senseRange / 2), loc.y
+	                    + (senseRange / 2));
+	            toBrodcast = new short[senseRange * senseRange];
+
+	            /* scan terains not explered withing range */
+	            index = 0;
+	            for (int i = 0; i < senseRange; i++) {
+	                for (int j = 0; j < senseRange; j++) {
+	                    int hqx = (loc.x - d.hq.x);
+	                    int hqy = (loc.y - d.hq.y);
+	                    int x = 500 + hqx;
+	                    int y = 500 + hqy;
+	                    if (!explored[x][y]) {
+	                        if (rc.senseTerrainTile(loc) != TerrainTile.NORMAL) {
+	                            toBrodcast[index++] = (short) ((hqx << 8) | (hqy & 0x00ff));
+	                        }
+	                        explored[x][y] = true;
+	                    }
+	                }
+	            }
+	        } catch (Exception e) {
+	            System.out.println("Error in Drone calculation");
+	        }
+	    }
+
+		@Override
+		public State run(Drone d) throws GameActionException {
+			perception(d);
+			calculation(d);
+			try {
+	            if (enemies.length > 1) {
+	                if (rc.isWeaponReady()) {
+	                    AttackUtils.attackSomething(rc, d.range, d.opponent);
+	                } else {
+	                    /* run away if can not fire */
+	                    tryKite(enemies[0].location, rc.senseEnemyTowerLocations());
+	                }
+	            } else {
+	                if (rc.isCoreReady()) {
+	                    if (!south) {
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.SOUTH)).equals(TerrainTile.OFF_MAP)) {
+	                            south = true;
+	                        }
+	                        Constants.tryMove(rc,Direction.SOUTH);
+	                    } else if (!northEast) {
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.NORTH)).equals(TerrainTile.OFF_MAP)) {
+	                            northEast = true;
+	                            north = true;
+	                        }
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.EAST)).equals(TerrainTile.OFF_MAP)) {
+	                            northEast = true;
+	                            east = true;
+	                        }
+	                        Constants.tryMove(rc,Direction.NORTH_EAST);
+	                    } else if ((count--) > 0) {
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.WEST)).equals(TerrainTile.OFF_MAP)) {
+	                            north = true;
+	                        }
+	                        Constants.tryMove(rc,Direction.WEST);
+	                    } else if (!north) {
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.NORTH)).equals(TerrainTile.OFF_MAP)) {
+	                            north = true;
+	                        }
+	                        Constants.tryMove(rc, Direction.NORTH);
+	                    } else if ((count2--) > 0) {
+	                        Constants.tryMove(rc,Direction.SOUTH);
+	                    } else if (!east) {
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.EAST)).equals(TerrainTile.OFF_MAP)) {
+	                            east = true;
+	                        }
+	                        Constants.tryMove(rc,Direction.EAST);
+	                    } else if (!west) {
+	                        if (rc.senseTerrainTile(myLoc.add(Direction.WEST)).equals(TerrainTile.OFF_MAP)) {
+	                            west = true;
+	                        }
+	                        Constants.tryMove(rc,Direction.WEST);
+	                    } else {
+	                        //explored the map
+	                        Patrolling state = new Patrolling();
+	                        return state;
+	                    }
+	                }
+	            }
+	            return this;
+	        } catch (Exception e) {
+	            System.out.println("Error in Drone scout action");
+	            return this;
+	        }
+		}
+
+
+		
 	}
 	
     /**

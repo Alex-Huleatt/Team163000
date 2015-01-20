@@ -1,19 +1,30 @@
 package team163000.units;
 
+import java.util.Random;
+
+import battlecode.common.Direction;
 import battlecode.common.RobotController;
+import battlecode.common.Team;
 
 public class SupplyDepot implements Unit {
+	RobotController rc;
 
 	@Override
 	public void onSpawn(RobotController rc) {
-		// TODO Auto-generated method stub
-
+		this.rc = rc;
 	}
 
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
-
+		try {
+			while (true) {
+				rc.yield();
+			}
+		} catch (Exception e) {
+			System.out.println("Supply Depot Exception");
+			e.printStackTrace();
+		}
 	}
+
 
 }

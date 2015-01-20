@@ -9,12 +9,10 @@ import battlecode.common.*;
 
 import java.util.Random;
 
-import team163.utils.CHANNELS;
-import team163.utils.Move;
-import team163.utils.Supply;
-import team163.utils.PathMove;
-
 import javax.xml.stream.Location;
+
+import team163000.CHANNELS;
+import team163000.Constants;
 
 /**
  *
@@ -22,22 +20,22 @@ import javax.xml.stream.Location;
  */
 public class SupplyDrone implements Unit {
 
-    static Direction[] directions = {Direction.NORTH, Direction.NORTH_EAST,
+    public Direction[] directions = {Direction.NORTH, Direction.NORTH_EAST,
         Direction.EAST, Direction.SOUTH_EAST, Direction.SOUTH,
         Direction.SOUTH_WEST, Direction.WEST, Direction.NORTH_WEST};
 
-    static RobotController rc;
-    static Team myTeam;
-    static Team enemyTeam;
-    static int myRange;
-    static Random rand;
-    static MapLocation myLoc;
-    static int lastHead = 0;
-    static MapLocation travelLoc;
-    static boolean wasReturning = false;
+    public RobotController rc;
+    public Team myTeam;
+    public Team enemyTeam;
+    public int myRange;
+    public Random rand;
+    public MapLocation myLoc;
+    public int lastHead = 0;
+    public MapLocation travelLoc;
+    public boolean wasReturning = false;
 
-    static int myHead = -1;
-    static int turnsWaited = 0;
+    public int myHead = -1;
+    public int turnsWaited = 0;
     
     private int offset;
     
@@ -104,7 +102,7 @@ public class SupplyDrone implements Unit {
         return channel;
     }
 
-    static void goToBase() throws GameActionException {
+    void goToBase() throws GameActionException {
         rc.setIndicatorString(1, "Heading back to base!");
         wasReturning = true;
         if (travelLoc != null && !travelLoc.equals(rc.senseHQLocation())) {
@@ -120,7 +118,7 @@ public class SupplyDrone implements Unit {
         usePathMove(hqLoc);
     }
 
-    static void goSupplyPeople() throws GameActionException {
+    void goSupplyPeople() throws GameActionException {
         if (wasReturning) {
             travelLoc = null;
         }
@@ -159,18 +157,155 @@ public class SupplyDrone implements Unit {
         usePathMove(dest);
     }
 
-    static void claimDelivery() throws GameActionException {
+    void claimDelivery() throws GameActionException {
         myHead = rc.readBroadcast(196);
         rc.broadcast(196, (myHead == 298) ? 200 : (myHead + 2));
     }
 
-    static void completeDelivery() {
+    void completeDelivery() {
         myHead = -1;
         turnsWaited = 0;
     }
 
-    static void usePathMove(MapLocation dest) throws GameActionException {
-        Move.tryKite(dest, rc.senseEnemyTowerLocations());
+    void usePathMove(MapLocation dest) throws GameActionException {
+        tryKite(dest, rc.senseEnemyTowerLocations());
+    }
+    
+    /**
+     * Does not take into account walls and trys to kite around towers and stuff
+     *
+     * @param target map location to go to
+     * @param objects stuff to kite around such as tower locations
+     */
+    public Direction pre = Direction.NORTH;
+    public boolean right = true;
+    public void tryKite(MapLocation target, MapLocation[] objects) {
+        try {
+            Direction dir = pre;
+            MapLocation myLoc = rc.getLocation();
+            MapLocation next = myLoc.add(dir);
+            if (myLoc.compareTo(target) == 0) {
+                target = rc.senseHQLocation();
+            }
+
+            if (right && inTowerRange(myLoc.add(pre), objects)
+                    && inTowerRange(myLoc.add(pre.rotateRight()), objects)
+                    && inTowerRange(myLoc.add(pre.rotateRight().rotateRight()), objects)) {
+                right = false;
+            }
+
+            if (!right && inTowerRange(myLoc.add(pre), objects)
+                    && inTowerRange(myLoc.add(pre.rotateLeft()), objects)
+                    && inTowerRange(myLoc.add(pre.rotateLeft().rotateLeft()), objects)) {
+                right = true;
+            }
+
+            boolean check = true;
+            int count = 8;
+            while (check && count-- > 0) {
+                for (MapLocation x : objects) {
+                    if (x != null && x.x != 0 && x.y != 0) {
+                        for (int j = 0; j < 8; j++) {
+                            if (x.distanceSquaredTo(next) < 27) {
+                                Direction nDir = (right) ? dir.rotateRight() : dir
+                                        .rotateLeft(); // turn right or left
+                                next = myLoc.add(nDir);
+                            }
+                        }
+                    }
+                }
+                // reached the end to the next location is good
+                check = false;
+            }
+
+            //curve toward target
+            //boolean canChange = true;
+            Direction direct = myLoc.directionTo(target);
+            Direction d = myLoc.directionTo(next);
+            do {
+                rc.setIndicatorDot(myLoc, 4, 4, 4);
+                if (right) {
+                    d = d.rotateRight();
+                } else {
+                    d = d.rotateLeft();
+                }
+            } while (!inTowerRange(myLoc.add(d), objects) && d.compareTo(direct) != 0);
+            dir = d;
+            if (rc.senseTerrainTile(next) == TerrainTile.OFF_MAP) {
+                dir = dir.opposite();
+            }
+            if (rc.isCoreReady()) {
+                for (int i = 0; i < 8; i++) {
+                    if (rc.canMove(dir) && !inTowerRange(myLoc.add(dir), objects)) {
+                        pre = dir;
+                        rc.move(dir);
+                        break;
+                    } else {
+                        dir = (right) ? dir.rotateRight() : dir.rotateLeft();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("kiting pooped out" + e);
+        }
+    }
+    
+    /**
+     * Test in range of incoming objects (uses hard set 27 sq at the moment)
+     *
+     * @param m location to check
+     * @param obj stuff to avoid
+     * @return
+     */
+    public boolean inTowerRange(MapLocation m, MapLocation[] obj, int range) {
+        for (MapLocation x : obj) {
+            if (x != null && x.x != 0 && x.y != 0) {
+                if (m.distanceSquaredTo(x) < range) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Test in range of incoming objects (uses hard set 27 sq at the moment)
+     *
+     * @param m location to check
+     * @param obj stuff to avoid
+     * @return
+     */
+    public boolean inTowerRange(MapLocation m, MapLocation[] obj) {
+        for (MapLocation x : obj) {
+            if (x != null && x.x != 0 && x.y != 0) {
+                if (m.distanceSquaredTo(x) < 27) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public void tryFly (MapLocation m) throws GameActionException {
+        if (!rc.isCoreReady()) {
+            return;
+        }
+
+        try {
+        	Direction d = rc.getLocation().directionTo(m);
+            int offsetIndex = 0;
+            int[] offsets = {0, 1, -1, 2, -2};
+            int dirint = Constants.directionToInt(d);
+            while (offsetIndex < 5
+                    && !rc.canMove(Constants.directions[(dirint + offsets[offsetIndex] + 8) % 8])) {
+                offsetIndex++;
+            }
+            if (offsetIndex < 5 && rc.isCoreReady()) {
+                rc.move(Constants.directions[(dirint + offsets[offsetIndex] + 8) % 8]);
+            }
+        } catch (Exception e) {
+            System.out.println("Error in tryFly");
+        } 
     }
 
 }

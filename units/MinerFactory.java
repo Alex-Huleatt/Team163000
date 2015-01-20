@@ -2,7 +2,7 @@ package team163000.units;
 
 import java.util.Random;
 
-import team163.utils.CHANNELS;
+import team163000.CHANNELS;
 import team163000.Constants;
 import battlecode.common.GameActionException;
 import battlecode.common.RobotController;
