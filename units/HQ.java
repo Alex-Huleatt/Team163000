@@ -6,11 +6,11 @@
 package team163000.units;
 
 import battlecode.common.*;
-
 import java.util.Random;
-
 import team163000.Spawn;
 import team163000.StratController;
+import team163000.Supply;
+import team163000.Constants;
 
 
 /**
@@ -21,21 +21,12 @@ public class HQ implements Unit {
 
     public Random rand;
     public RobotController rc;
-    public Direction[] directions = {Direction.NORTH, Direction.NORTH_EAST,
-        Direction.EAST, Direction.SOUTH_EAST, Direction.SOUTH,
-        Direction.SOUTH_WEST, Direction.WEST, Direction.NORTH_WEST};
     public Team enemyTeam;
     public int myRange;
     public RobotInfo[] myRobots;
     public int[] counts;
     public Team myTeam;
     public double myHealth;
-
-    public boolean[] walls_found; //NORTH, EAST, SOUTH, WEST is the order
-    public int minX;
-    public int minY;
-    public int maxX;
-    public int maxY;
     public int rallyX;
     public int rallyY;
     public MapLocation myLoc;
@@ -87,7 +78,6 @@ public class HQ implements Unit {
     }
 
     public void run() {
-        
         while (true) {
             try {
 				//Channel 1-21 for unit counts
@@ -136,7 +126,7 @@ public class HQ implements Unit {
                 }
 
                 if (rc.isCoreReady() && rc.getTeamOre() >= 100 && counts[7] < 3) { //counts[7] == beaverCount
-                    Spawn.trySpawn(directions[rand.nextInt(8)], RobotType.BEAVER, rc);
+                    Spawn.trySpawn(Constants.directions[rand.nextInt(8)], RobotType.BEAVER, rc);
                 }
 
                 int pbX = rc.readBroadcast(187);
@@ -264,7 +254,6 @@ public class HQ implements Unit {
         }
     }
 
-    // This method will attack an enemy in sight, if there is one
     public void attackSomething() throws GameActionException {
         RobotInfo[] enemies = rc.senseNearbyRobots(myRange, enemyTeam);
         if (enemies.length > 0) {

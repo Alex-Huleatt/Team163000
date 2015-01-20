@@ -82,6 +82,8 @@ public class Drone implements Unit {
 		 
          while (true) {
         	 try {
+             enemies = rc.senseNearbyRobots(rc.getType().sensorRadiusSquared, opponent);
+             allies = rc.senseNearbyRobots(rc.getType().sensorRadiusSquared, team);
              state = state.run(this);
 
              rc.yield();
