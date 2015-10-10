@@ -93,7 +93,7 @@ public class BasicBugger {
 			obs1 = me.add(directions[obs_d]);
 			obs2 = me.add(directions[obs_d2]);
 			if (!impassable(temp)
-					&& (isObstacle(obs1) || (d % 2 == 0 && isObstacle(obs2)))) {
+					&& (isObstacle(obs1) && (d % 2 == 1 || isObstacle(obs2)))) {
 				recursed = false;
 				return temp;
 			}
